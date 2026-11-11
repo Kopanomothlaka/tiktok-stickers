@@ -1,8 +1,7 @@
 // Netlify Function — proxies TikTok CDN images so the page can show and download them.
 // Only TikTok image hosts are allowed, so this can't be used as an open proxy.
 
-const ALLOWED = /(tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|byteimg\.com|ibytedtos\.com|muscdn\.com)$/i;
-
+const ALLOWED = /(tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|tiktokv\.com|tiktokv\.us|tiktokv\.eu|byteimg\.com|ibyteimg\.com|ibytedtos\.com|ttwstatic\.com|byteoversea\.com|muscdn\.com|akamaized\.net)$/i;
 export default async (req) => {
   try {
     const target = new URL(new URL(req.url).searchParams.get("url") || "");
