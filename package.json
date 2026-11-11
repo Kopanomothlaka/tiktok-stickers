@@ -1,0 +1,12 @@
+{
+  "name": "tiktok-sticker-grabber",
+  "version": "2.0.0",
+  "description": "Paste a TikTok link, get every sticker/image from its comments (via SearchAPI). Hosted on Netlify.",
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

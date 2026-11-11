@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sticker Grabber</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0d12;
+    --panel: #17171f;
+    --line: #2a2a36;
+    --text: #f2f2f5;
+    --muted: #8d8d9e;
+    --cyan: #25f4ee;
+    --pink: #fe2c55;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Space Grotesk", system-ui, sans-serif; min-height: 100vh;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: clamp(28px, 6vw, 48px); margin: 0 0 6px; letter-spacing: -0.02em; }
+  h1 span {
+    background: linear-gradient(90deg, var(--cyan), var(--pink));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+
+  form {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px; display: grid; gap: 12px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type=text] {
+    flex: 1 1 300px; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px; font: inherit; outline: none;
+  }
+  input[type=text]:focus { border-color: var(--cyan); }
+  button {
+    font: inherit; font-weight: 700; border: 0; border-radius: 10px; padding: 14px 22px;
+    cursor: pointer; background: var(--pink); color: #fff;
+  }
+  button:disabled { opacity: .5; cursor: progress; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); padding: 8px 12px; font-weight: 500; }
+  .opts { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 14px; align-items: center; }
+  .opts select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px; font: inherit; }
+
+  .status { margin: 22px 0 12px; color: var(--muted); min-height: 24px; }
+  .status.err { color: var(--pink); }
+  .bar { display: none; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .bar.show { display: flex; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .card .img {
+    aspect-ratio: 1; display: grid; place-items: center; padding: 10px;
+    background: repeating-conic-gradient(#1d1d27 0 25%, #191921 0 50%) 0 0 / 16px 16px;
+  }
+  .card img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .card .meta { padding: 10px; font-size: 13px; display: grid; gap: 4px; }
+  .card .who { color: var(--cyan); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .txt { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .actions { display: flex; justify-content: space-between; align-items: center; padding: 0 10px 10px; font-size: 12px; color: var(--muted); }
+  .card a.dl { color: var(--text); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; }
+  .card a.dl:hover { border-color: var(--cyan); }
+  .broken .img::after { content: "expired"; color: var(--muted); font-size: 12px; }
+  .broken img { display: none; }
+  .empty { text-align: center; color: var(--muted); padding: 50px 0; grid-column: 1 / -1; }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: var(--cyan); border-radius: 50%; animation: s .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sticker <span>Grabber</span></h1>
+  <p class="sub">Paste a TikTok video link and pull every sticker and image from its comments.</p>
+
+  <form id="form">
+    <div class="row">
+      <input id="link" type="text" placeholder="https://www.tiktok.com/@user/video/123… or vm.tiktok.com/…" autocomplete="off" required>
+      <button id="go" type="submit">Scan comments</button>
+    </div>
+    <div class="opts">
+      <label>Depth
+        <select id="pages">
+          <option value="2">Quick (2 pages)</option>
+          <option value="5" selected>Normal (5 pages)</option>
+          <option value="10">Deep (10 pages)</option>
+          <option value="20">Max (20 pages)</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="replies"> Include replies (uses more searches)</label>
+    </div>
+  </form>
+
+  <div id="status" class="status"></div>
+  <div id="bar" class="bar">
+    <div id="count"></div>
+    <button id="zip" class="ghost" type="button">Download all (.zip)</button>
+  </div>
+  <div id="grid" class="grid"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let current = [];
+
+const proxied = (url) => `/api/image?url=${encodeURIComponent(url)}`;
+const extFor = (type) =>
+  type.includes("gif") ? "gif" : type.includes("png") ? "png" : type.includes("jpeg") ? "jpg" : "webp";
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function setStatus(html, isErr = false) {
+  $("status").innerHTML = html;
+  $("status").className = "status" + (isErr ? " err" : "");
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("go").disabled = true;
+  $("grid").innerHTML = "";
+  $("bar").classList.remove("show");
+  setStatus('<span class="spin"></span>Scanning comments… this can take a little while.');
+
+  const maxPages = parseInt($("pages").value, 10);
+  const includeReplies = $("replies").checked;
+  const seen = new Set();
+  const withReplies = [];
+  let videoId = null, totalOnVideo = null, scanned = 0, pagesUsed = 0, token = null;
+  current = [];
+
+  // One page per call keeps each request under Netlify's function time limit
+  const fetchPage = async (payload) => {
+    const res = await fetch("/api/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Scan failed.");
+    pagesUsed++;
+    return data;
+  };
+
+  const collect = (comments) => {
+    for (const c of comments) {
+      if (seen.has(c.id)) continue; // pages can repeat comments
+      seen.add(c.id);
+      scanned++;
+      if (c.image) current.push(c);
+      if (!c.isReply && c.replies > 0) withReplies.push(c.id);
+    }
+    const total = totalOnVideo != null ? ` of ~${totalOnVideo.toLocaleString()}` : "";
+    setStatus(`<span class="spin"></span>Scanned ${scanned.toLocaleString()}${total} comments · ${current.length} stickers so far…`);
+    render();
+  };
+
+  try {
+    // Top-level comments
+    for (let page = 0; page < maxPages; page++) {
+      const data = await fetchPage(token ? { token } : { link: $("link").value });
+      if (data.done) {
+        if (page === 0) throw new Error(data.message || "No comments to show for this video.");
+        token = null;
+        break;
+      }
+      videoId = data.videoId || videoId;
+      if (data.totalOnVideo != null) totalOnVideo = data.totalOnVideo;
+      collect(data.comments);
+      token = data.next;
+      if (!token) break;
+    }
+    const hasMore = !!token;
+
+    // Replies — gets at most the same page budget again
+    if (includeReplies) {
+      for (const commentId of withReplies) {
+        if (pagesUsed >= maxPages * 2) break;
+        let rToken = null;
+        do {
+          const data = await fetchPage(rToken ? { token: rToken } : { videoId, commentId });
+          collect(data.comments.map((c) => ({ ...c, isReply: true })));
+          rToken = data.next;
+        } while (rToken && pagesUsed < maxPages * 2);
+      }
+    }
+
+    const total = totalOnVideo != null ? ` of ~${totalOnVideo.toLocaleString()}` : "";
+    setStatus(
+      `Scanned ${scanned.toLocaleString()}${total} comments using ${pagesUsed} searches.` +
+      (hasMore ? " More comments exist — pick a deeper scan to go further." : "")
+    );
+    render();
+  } catch (err) {
+    if (current.length) render();
+    setStatus(esc(err.message), true);
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+function render() {
+  if (!current.length) {
+    $("grid").innerHTML = '<div class="empty">No stickers or images found in the scanned comments.</div>';
+    return;
+  }
+  $("count").textContent = `${current.length} sticker${current.length === 1 ? "" : "s"} found`;
+  $("bar").classList.add("show");
+
+  $("grid").innerHTML = current.map((s, i) => `
+    <div class="card">
+      <div class="img"><img loading="lazy" src="${proxied(s.image)}" alt="Sticker from @${esc(s.author.username)}"
+        onerror="this.closest('.card').classList.add('broken')"></div>
+      <div class="meta">
+        <a class="who" href="${esc(s.author.link)}" target="_blank" rel="noopener">@${esc(s.author.username)}</a>
+        ${s.text ? `<div class="txt" title="${esc(s.text)}">${esc(s.text)}</div>` : ""}
+      </div>
+      <div class="actions">
+        <span>♥ ${s.likes.toLocaleString()}${s.isReply ? " · reply" : ""}</span>
+        <a class="dl" href="#" data-i="${i}">Save</a>
+      </div>
+    </div>`).join("");
+}
+
+async function getBlob(s) {
+  const r = await fetch(proxied(s.image));
+  if (!r.ok) throw new Error("expired");
+  return r.blob();
+}
+
+function saveBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+$("grid").addEventListener("click", async (e) => {
+  const btn = e.target.closest("a.dl");
+  if (!btn) return;
+  e.preventDefault();
+  const s = current[btn.dataset.i];
+  try {
+    const blob = await getBlob(s);
+    saveBlob(blob, `sticker_${s.author.username || "unknown"}_${s.id}.${extFor(blob.type)}`);
+  } catch {
+    btn.textContent = "Expired";
+  }
+});
+
+$("zip").addEventListener("click", async () => {
+  const btn = $("zip");
+  btn.disabled = true;
+  const zip = new JSZip();
+  let done = 0, failed = 0;
+  for (const s of current) {
+    try {
+      const blob = await getBlob(s);
+      zip.file(`${String(done + 1).padStart(3, "0")}_${s.author.username || "unknown"}_${s.id}.${extFor(blob.type)}`, blob);
+      done++;
+    } catch { failed++; }
+    btn.textContent = `Zipping ${done + failed}/${current.length}…`;
+  }
+  saveBlob(await zip.generateAsync({ type: "blob" }), "tiktok-stickers.zip");
+  btn.textContent = failed ? `Downloaded (${failed} expired)` : "Download all (.zip)";
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>
